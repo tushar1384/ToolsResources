@@ -1,6 +1,6 @@
 # ToolsResources
 Scheduling tools and resources for continous learning
-# app.py
+# web.py
 from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
