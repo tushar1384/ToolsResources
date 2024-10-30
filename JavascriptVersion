@@ -1,0 +1,149 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const bodyParser = require('body-parser');
+const { DateTime } = require('luxon');
+
+const app = express();
+app.use(bodyParser.json());
+
+// --- Database setup ---
+const db = new sqlite3.Database('database.db');
+
+function initialiseDBs() {
+    db.serialize(() => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS meetings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mentor TEXT,
+                mentee TEXT,
+                date TEXT,
+                time TEXT,
+                status TEXT DEFAULT 'Pending'
+            )
+        `);
+        db.run(`
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT,
+                goal TEXT,
+                deadline TEXT,
+                completed INTEGER DEFAULT 0
+            )
+        `);
+        db.run(`
+            CREATE TABLE IF NOT EXISTS session_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT,
+                log TEXT,
+                date TEXT
+            )
+        `);
+    });
+}
+
+// --- 1. Calendar Integration - Schedule a Meeting ---
+app.post('/api/schedule_meeting', (req, res) => {
+    const { mentor, mentee, date, time } = req.body;
+
+    db.get('SELECT * FROM meetings WHERE date = ? AND time = ?', [date, time], (err, row) => {
+        if (row) {
+            return res.status(409).json({ message: 'Conflict detected, please choose another time.' });
+        }
+
+        db.run('INSERT INTO meetings (mentor, mentee, date, time, status) VALUES (?, ?, ?, ?, ?)', 
+            [mentor, mentee, date, time, 'Scheduled'], (err) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error scheduling meeting.' });
+            }
+            res.status(201).json({ message: 'Meeting scheduled successfully.' });
+        });
+    });
+});
+
+// --- 2. Automated Meeting Scheduling (Simple Confirmation) ---
+app.post('/api/confirm_meeting', (req, res) => {
+    const { meeting_id } = req.body;
+
+    db.run('UPDATE meetings SET status = ? WHERE id = ?', ['Confirmed', meeting_id], (err) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error confirming meeting.' });
+        }
+        res.status(200).json({ message: 'Meeting confirmed successfully.' });
+    });
+});
+
+// --- 3. Reminder Notifications ---
+app.get('/api/reminders', (req, res) => {
+    const today = DateTime.now().toISODate();
+
+    db.all('SELECT * FROM meetings WHERE date = ?', [today], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error fetching reminders.' });
+        }
+        const reminders = rows.map(meeting => `Reminder: Meeting with ${meeting.mentor} and ${meeting.mentee} at ${meeting.time}.`);
+        res.status(200).json({ reminders });
+    });
+});
+
+// --- 4. Goal and Task Setting ---
+app.post('/api/add_task', (req, res) => {
+    const { user, goal, deadline } = req.body;
+
+    db.run('INSERT INTO tasks (user, goal, deadline) VALUES (?, ?, ?)', [user, goal, deadline], (err) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error adding task.' });
+        }
+        res.status(201).json({ message: 'Task added successfully.' });
+    });
+});
+
+app.get('/api/tasks', (req, res) => {
+    db.all('SELECT * FROM tasks', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error fetching tasks.' });
+        }
+        const tasksArray = rows.map(task => ({
+            id: task.id,
+            user: task.user,
+            goal: task.goal,
+            deadline: task.deadline,
+            completed: Boolean(task.completed)
+        }));
+        res.status(200).json({ tasks: tasksArray });
+    });
+});
+
+// --- 5. Session Logs and Notes ---
+app.post('/api/add_session_log', (req, res) => {
+    const { user, log } = req.body;
+    const date = DateTime.now().toISODate();
+
+    db.run('INSERT INTO session_logs (user, log, date) VALUES (?, ?, ?)', [user, log, date], (err) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error saving session log.' });
+        }
+        res.status(201).json({ message: 'Session log saved successfully.' });
+    });
+});
+
+app.get('/api/session_logs', (req, res) => {
+    db.all('SELECT * FROM session_logs', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error fetching session logs.' });
+        }
+        const logList = rows.map(log => ({
+            id: log.id,
+            user: log.user,
+            log: log.log,
+            date: log.date
+        }));
+        res.status(200).json({ session_logs: logList });
+    });
+});
+
+// Initialize database and run the application
+initialiseDBs();
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
