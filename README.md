@@ -8,9 +8,9 @@ from datetime import datetime
 app = Flask(__name__)
 
 # --- Database setup ---
-def init_db():
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
+def initialise_dbs():
+    link= sqlite3.connect('database.db')
+    cursor = jodo.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS meetings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,14 +38,14 @@ def init_db():
             date TEXT
         )
     ''')
-    conn.commit()
-    conn.close()
+    link.commit()
+    link.close()
 
 # Helper function to get database connection
-def get_db_connection():
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_dbs_connection():
+    link = sqlite3.connect('database.db')
+    link.row_factory = sqlite3.Row
+    return link
 
 # --- 1. Calendar Integration - Schedule a Meeting ---
 @app.route('/api/schedule_meeting', methods=['POST'])
@@ -56,49 +56,49 @@ def schedule_meeting():
     date = data['date']
     time = data['time']
 
-    conn = get_db_connection()
+    link = get_dbs_connection()
     # Check for conflicts in date and time
-    conflicts = conn.execute(
+    conflicts = link.execute(
         'SELECT * FROM meetings WHERE date = ? AND time = ?', (date, time)
     ).fetchall()
 
     if conflicts:
-        conn.close()
+        link.close()
         return jsonify({'message': 'Conflict detected, please choose another time.'}), 409
 
     # Insert meeting into database if no conflicts
-    conn.execute(
+    link.execute(
         'INSERT INTO meetings (mentor, mentee, date, time, status) VALUES (?, ?, ?, ?, ?)',
         (mentor, mentee, date, time, 'Scheduled')
     )
-    conn.commit()
-    conn.close()
+    link.commit()
+    link.close()
     return jsonify({'message': 'Meeting scheduled successfully.'}), 201
 
 # --- 2. Automated Meeting Scheduling (Simple Confirmation) ---
 @app.route('/api/confirm_meeting', methods=['POST'])
-def confirm_meeting():
+def confirm_meet():
     data = request.get_json()
-    meeting_id = data['meeting_id']
-    conn = get_db_connection()
+    meet_id = data['meeting_id']
+    link = get_dbs_connection()
 
     # Update meeting status to confirmed
-    conn.execute('UPDATE meetings SET status = ? WHERE id = ?', ('Confirmed', meeting_id))
-    conn.commit()
-    conn.close()
+    link.execute('UPDATE meetings SET status = ? WHERE id = ?', ('Confirmed', meet_id))
+    link.commit()
+    link.close()
     return jsonify({'message': 'Meeting confirmed successfully.'}), 200
 
 # --- 3. Reminder Notifications ---
 @app.route('/api/reminders', methods=['GET'])
 def reminders():
-    conn = get_db_connection()
+    link = get_dbs_connection()
     today = datetime.now().strftime("%Y-%m-%d")
     
     # Fetch meetings scheduled for today
-    meetings = conn.execute(
+    meetings = link.execute(
         'SELECT * FROM meetings WHERE date = ?', (today,)
     ).fetchall()
-    conn.close()
+    link.close()
 
     # Prepare reminder messages for each meeting
     reminders = [
@@ -112,27 +112,27 @@ def reminders():
 def add_task():
     data = request.get_json()
     user = data['user']
-    goal = data['goal']
+    target = data['goal']
     deadline = data['deadline']
 
-    conn = get_db_connection()
-    conn.execute(
+    link = get_db_connection()
+    link.execute(
         'INSERT INTO tasks (user, goal, deadline) VALUES (?, ?, ?)',
-        (user, goal, deadline)
+        (user, target, deadline)
     )
-    conn.commit()
-    conn.close()
+    link.commit()
+    link.close()
     return jsonify({'message': 'Task added successfully.'}), 201
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
-    conn = get_db_connection()
-    tasks = conn.execute('SELECT * FROM tasks').fetchall()
-    conn.close()
+    link = get_dbs_connection()
+    tasks = link.execute('SELECT * FROM tasks').fetchall()
+    link.close()
 
     # Return all tasks as a JSON response
-    task_list = [{'id': task['id'], 'user': task['user'], 'goal': task['goal'], 'deadline': task['deadline'], 'completed': bool(task['completed'])} for task in tasks]
-    return jsonify({'tasks': task_list}), 200
+    tasks_array = [{'id': task['id'], 'user': task['user'], 'goal': task['goal'], 'deadline': task['deadline'], 'completed': bool(task['completed'])} for task in tasks]
+    return jsonify({'tasks': tasks_array}), 200
 
 # --- 5. Session Logs and Notes ---
 @app.route('/api/add_session_log', methods=['POST'])
@@ -142,20 +142,20 @@ def add_session_log():
     log = data['log']
     date = datetime.now().strftime("%Y-%m-%d")
 
-    conn = get_db_connection()
-    conn.execute(
+    link = get_dbs_connection()
+    link.execute(
         'INSERT INTO session_logs (user, log, date) VALUES (?, ?, ?)',
         (user, log, date)
     )
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Session log saved successfully.'}), 201
+    link.commit()
+    link.close()
+    return jsonify({'message': 'Session log saved successfully...'}), 201
 
 @app.route('/api/session_logs', methods=['GET'])
 def get_session_logs():
-    conn = get_db_connection()
-    logs = conn.execute('SELECT * FROM session_logs').fetchall()
-    conn.close()
+    link = get_dbs_connection()
+    logs = link.execute('SELECT * FROM session_logs').fetchall()
+    link.close()
 
     # Return session logs as a JSON response
     log_list = [{'id': log['id'], 'user': log['user'], 'log': log['log'], 'date': log['date']} for log in logs]
@@ -163,5 +163,5 @@ def get_session_logs():
 
 # Initialize database and run the application
 if __name__ == '__main__':
-    init_db()
+    initialise_dbs()
     app.run(debug=True)
